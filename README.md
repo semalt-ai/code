@@ -23,6 +23,13 @@ It provides an interactive chat interface, one-shot code generation, AI-assisted
 
 The default configuration expects a local API server at `http://127.0.0.1:8800`.
 
+The CLI accepts `api_base` in either of these forms:
+
+- `http://127.0.0.1:8800`
+- `http://127.0.0.1:8800/v1`
+
+Both formats are normalized automatically.
+
 ## Installation
 
 Install the package globally so the `semalt-code` command is available system-wide.
@@ -63,6 +70,8 @@ Example config:
   "stream": true
 }
 ```
+
+You can also set `"api_base"` to a URL that already ends with `/v1`.
 
 ## Usage
 

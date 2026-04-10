@@ -418,7 +418,10 @@ class StreamRenderer {
 // ── API Client ────────────────────────────────────────────────────────────────
 
 function apiUrl(urlPath) {
-  return `${config.api_base.replace(/\/$/, '')}${urlPath}`;
+  const base = (config.api_base || '').replace(/\/$/, '');
+  const normalizedBase = /\/v1$/i.test(base) ? base : `${base}/v1`;
+  const normalizedPath = urlPath.startsWith('/v1/') ? urlPath.slice(3) : urlPath;
+  return `${normalizedBase}${normalizedPath}`;
 }
 
 function estimateTokens(text) {
