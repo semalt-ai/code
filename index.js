@@ -21,23 +21,43 @@ const DEFAULT_CONFIG = {
   temperature: 0.7,
   max_tokens: 4096,
   stream: true,
+  models: [],
 };
 
 const CONFIG_PATH = path.join(os.homedir(), '.semalt-ai', 'config.json');
+
+function normalizeConfig(cfg = {}) {
+  const merged = { ...DEFAULT_CONFIG, ...cfg };
+  merged.models = Array.isArray(cfg.models)
+    ? cfg.models
+        .filter((entry) => entry &&
+          typeof entry.api_base === 'string' &&
+          typeof entry.api_key === 'string' &&
+          typeof entry.model === 'string' &&
+          entry.api_base.trim() &&
+          entry.model.trim())
+        .map((entry) => ({
+          api_base: entry.api_base.trim(),
+          api_key: entry.api_key,
+          model: entry.model.trim(),
+        }))
+    : [];
+  return merged;
+}
 
 function loadConfig() {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      return { ...DEFAULT_CONFIG, ...data };
+      return normalizeConfig(data);
     } catch {}
   }
-  return { ...DEFAULT_CONFIG };
+  return normalizeConfig();
 }
 
 function saveConfig(cfg) {
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(normalizeConfig(cfg), null, 2));
 }
 
 let config = loadConfig();
@@ -422,6 +442,52 @@ function apiUrl(urlPath) {
   const normalizedBase = /\/v1$/i.test(base) ? base : `${base}/v1`;
   const normalizedPath = urlPath.startsWith('/v1/') ? urlPath.slice(3) : urlPath;
   return `${normalizedBase}${normalizedPath}`;
+}
+
+function describeModelProfile(profile) {
+  return `${profile.model} @ ${profile.api_base}`;
+}
+
+function setActiveModelProfile(profile) {
+  config.api_base = profile.api_base;
+  config.api_key = profile.api_key;
+  config.default_model = profile.model;
+  saveConfig(config);
+}
+
+function chooseSavedModelProfile(rl, currentModel, cwd, onDone) {
+  if (!config.models.length) {
+    console.log(`  ${FG_RED}✗${RST} ${FG_GRAY}No saved model profiles. Use semalt-code models add first.${RST}`);
+    onDone(currentModel);
+    return;
+  }
+
+  console.log();
+  console.log(`  ${FG_TEAL}${BOLD}◆ Saved Models${RST}`);
+  console.log(`  ${FG_DARK}${'─'.repeat(40)}${RST}`);
+  config.models.forEach((profile, index) => {
+    const active = profile.api_base === config.api_base &&
+      profile.api_key === config.api_key &&
+      profile.model === currentModel;
+    const marker = active ? `${FG_GREEN}●${RST}` : `${FG_DARK}○${RST}`;
+    console.log(`  ${marker} ${FG_CYAN}${index + 1}.${RST} ${describeModelProfile(profile)}`);
+  });
+  console.log();
+
+  rl.question(`  ${FG_TEAL}${BOLD}Select model>${RST} `, (answer) => {
+    const selected = Number((answer || '').trim());
+    if (!Number.isInteger(selected) || selected < 1 || selected > config.models.length) {
+      console.log(`  ${FG_RED}✗${RST} ${FG_GRAY}Invalid selection${RST}`);
+      onDone(currentModel);
+      return;
+    }
+
+    const profile = config.models[selected - 1];
+    setActiveModelProfile(profile);
+    console.log(`  ${FG_GREEN}✓${RST} ${FG_GRAY}Model profile → ${describeModelProfile(profile)}${RST}`);
+    printStatusBar(profile.model, cwd);
+    onDone(profile.model);
+  });
 }
 
 function estimateTokens(text) {
@@ -831,7 +897,9 @@ async function cmdChat(opts) {
         console.log(`
   ${FG_BLUE}${BOLD}Commands:${RST}
   ${FG_CYAN}/file <path>${RST}     ${FG_GRAY}Load file or dir into context${RST}
-  ${FG_CYAN}/model <name>${RST}    ${FG_GRAY}Switch model${RST}
+  ${FG_CYAN}/model${RST}           ${FG_GRAY}Choose saved model profile${RST}
+  ${FG_CYAN}/model <name>${RST}    ${FG_GRAY}Switch model manually${RST}
+  ${FG_CYAN}/models${RST}          ${FG_GRAY}Choose saved model profile${RST}
   ${FG_CYAN}/clear${RST}           ${FG_GRAY}Clear conversation${RST}
   ${FG_CYAN}/compact${RST}         ${FG_GRAY}Show token usage${RST}
   ${FG_CYAN}/shell <cmd>${RST}     ${FG_GRAY}Run shell command directly${RST}
@@ -850,6 +918,14 @@ async function cmdChat(opts) {
         const ctx = readFileContext([fp]);
         if (ctx) messages.push({ role: 'user', content: `Here is the file context:\n${ctx}` });
         return prompt();
+      }
+
+      if (text === '/model' || text === '/models') {
+        chooseSavedModelProfile(rl, currentModel, cwd, (nextModel) => {
+          currentModel = nextModel;
+          prompt();
+        });
+        return;
       }
 
       if (text.startsWith('/model ')) {
@@ -987,41 +1063,60 @@ async function cmdShell(opts, commandArgs) {
 }
 
 async function cmdModels() {
-  const url = apiUrl('/v1/models');
-  let res;
-  try {
-    res = await httpRequest(url, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${config.api_key}` },
-      timeout: 10000,
-    }, null);
-  } catch (e) {
-    console.log(`  ${FG_RED}✗ ${e.message}${RST}`);
+  if (!config.models.length) {
+    console.log(`  ${FG_RED}✗${RST} ${FG_GRAY}No saved model profiles. Use semalt-code models add first.${RST}`);
     return;
   }
 
-  return new Promise((resolve) => {
-    let data = '';
-    res.setEncoding('utf8');
-    res.on('data', chunk => data += chunk);
-    res.on('end', () => {
-      try {
-        const parsed = JSON.parse(data);
-        console.log();
-        console.log(`  ${FG_TEAL}${BOLD}◆ Available Models${RST}`);
-        console.log(`  ${FG_DARK}${'─'.repeat(40)}${RST}`);
-        for (const m of (parsed.data || [])) console.log(`  ${FG_GREEN}●${RST} ${m.id}`);
-        console.log();
-      } catch (e) {
-        console.log(`  ${FG_RED}✗ ${e.message}${RST}`);
-      }
-      resolve();
-    });
-    res.on('error', (e) => {
-      console.log(`  ${FG_RED}✗ ${e.message}${RST}`);
-      resolve();
-    });
+  console.log();
+  console.log(`  ${FG_TEAL}${BOLD}◆ Saved Models${RST}`);
+  console.log(`  ${FG_DARK}${'─'.repeat(40)}${RST}`);
+  config.models.forEach((profile, index) => {
+    const active = profile.api_base === config.api_base &&
+      profile.api_key === config.api_key &&
+      profile.model === config.default_model;
+    const marker = active ? `${FG_GREEN}●${RST}` : `${FG_DARK}○${RST}`;
+    console.log(`  ${marker} ${FG_CYAN}${index + 1}.${RST} ${describeModelProfile(profile)}`);
   });
+  console.log();
+}
+
+async function cmdModelsAdd() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+  });
+
+  function ask(question) {
+    return new Promise((resolve) => {
+      rl.question(question, (answer) => resolve((answer || '').trim()));
+    });
+  }
+
+  console.log();
+  console.log(`  ${FG_TEAL}${BOLD}◆ Add Model Profile${RST}`);
+  console.log(`  ${FG_DARK}${'─'.repeat(40)}${RST}`);
+
+  const apiBase = await ask(`  ${FG_CYAN}API Base URL:${RST} `);
+  const apiKey = await ask(`  ${FG_CYAN}API Key:${RST} `);
+  const modelId = await ask(`  ${FG_CYAN}Model ID:${RST} `);
+  rl.close();
+
+  if (!apiBase || !modelId) {
+    console.log(`\n  ${FG_RED}✗${RST} ${FG_GRAY}API Base URL and Model ID are required.${RST}\n`);
+    return;
+  }
+
+  const profile = {
+    api_base: apiBase,
+    api_key: apiKey || 'any',
+    model: modelId,
+  };
+
+  config.models.push(profile);
+  setActiveModelProfile(profile);
+  console.log(`\n  ${FG_GREEN}✓${RST} Saved model profile: ${describeModelProfile(profile)}\n`);
 }
 
 function cmdInit(opts) {
@@ -1032,6 +1127,7 @@ function cmdInit(opts) {
     temperature:   0.7,
     max_tokens:    4096,
     stream:        true,
+    models:        config.models,
   };
   saveConfig(cfg);
   config = cfg;
@@ -1085,7 +1181,8 @@ Commands:
   code <prompt>     Generate code from a prompt
   edit <file> <instruction>  Edit a file with AI
   shell <command>   Run and optionally analyze a shell command
-  models            List available models
+  models            List saved model profiles
+  models add        Add a saved model profile
   init              Initialize config
 
 Options:
@@ -1121,7 +1218,8 @@ Config: ${CONFIG_PATH}
     const { opts, positional } = parseArgs(rawArgs.slice(1));
     await cmdShell(opts, positional);
   } else if (command === 'models') {
-    await cmdModels();
+    if (rawArgs[1] === 'add') await cmdModelsAdd();
+    else await cmdModels();
   } else if (command === 'init') {
     const { opts } = parseArgs(rawArgs.slice(1));
     cmdInit(opts);

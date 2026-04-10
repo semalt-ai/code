@@ -95,7 +95,10 @@ semalt-code [command] [options]
   Runs a shell command with approval prompts.
 
 - `semalt-code models`
-  Lists models exposed by the configured API.
+  Lists all saved model profiles.
+
+- `semalt-code models add`
+  Opens an interactive flow to add an API base URL, API key, and model ID as a reusable model profile.
 
 - `semalt-code init`
   Creates or updates the local config file.
@@ -134,7 +137,9 @@ Available interactive commands:
 
 - `/help`
 - `/file <path>`
+- `/model`
 - `/model <name>`
+- `/models`
 - `/clear`
 - `/compact`
 - `/cost`
@@ -204,6 +209,22 @@ semalt-code shell -a "npm test"
 ```bash
 semalt-code models
 ```
+
+### Add a saved model profile
+
+```bash
+semalt-code models add
+```
+
+The CLI will ask for:
+
+- API Base URL
+- API Key
+- Model ID
+
+Each saved profile is appended to the profile list.
+
+Saved profiles can then be selected inside chat mode with `/model` or `/models`.
 
 ### Show the current version
 
