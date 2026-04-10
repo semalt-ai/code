@@ -1,6 +1,6 @@
 {
   "name": "@semalt-ai/code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Self-hosted AI Coding Assistant CLI",
   "main": "index.js",
   "bin": {
@@ -9,7 +9,13 @@
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": ["ai", "coding", "assistant", "cli", "semalt"],
+  "keywords": [
+    "ai",
+    "coding",
+    "assistant",
+    "cli",
+    "semalt"
+  ],
   "author": "Semalt.AI",
   "license": "MIT",
   "engines": {
