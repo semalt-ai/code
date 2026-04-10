@@ -10,6 +10,8 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 
+const PACKAGE_JSON = require('./package.json');
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG = {
@@ -1081,9 +1083,15 @@ Options:
   --api-base <url>        API base URL            (init)
   --api-key  <key>        API key                 (init)
   --default-model <name>  Default model           (init)
+  -v, --version           Show CLI version
 
 Config: ${CONFIG_PATH}
 `);
+    return;
+  }
+
+  if (command === '--version' || command === '-v') {
+    console.log(PACKAGE_JSON.version);
     return;
   }
 

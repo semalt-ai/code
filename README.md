@@ -96,6 +96,9 @@ semalt-code [command] [options]
 - `-m, --model <name>`
   Override the model name.
 
+- `-v, --version`
+  Print the current CLI version.
+
 - `-f, --file <path>`
   Load one or more files or directories into the prompt context for `code`.
 
@@ -191,6 +194,12 @@ semalt-code shell -a "npm test"
 
 ```bash
 semalt-code models
+```
+
+### Show the current version
+
+```bash
+semalt-code --version
 ```
 
 ## How Responses Are Rendered
