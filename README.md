@@ -25,20 +25,13 @@ The default configuration expects a local API server at `http://127.0.0.1:8800`.
 
 ## Installation
 
-From the project directory:
+Install the package globally so the `semalt-code` command is available system-wide.
 
 ```bash
-npm install
-npm link
+npm install -g @semalt-ai/code
 ```
 
-Or run it directly:
-
-```bash
-node index.js
-```
-
-After linking, the CLI command is:
+After global installation, run:
 
 ```bash
 semalt-code
