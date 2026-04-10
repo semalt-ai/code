@@ -4,7 +4,8 @@
   "description": "Self-hosted AI Coding Assistant CLI",
   "main": "index.js",
   "bin": {
-    "semalt-code": "./index.js"
+    "semalt-code": "./index.js",
+    "semalt": "./index.js"
   },
   "scripts": {
     "start": "node index.js"
