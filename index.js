@@ -789,6 +789,7 @@ async function cmdChat(opts) {
   printBanner();
   const cwd = process.cwd();
   let currentModel = opts.model || config.default_model;
+  let isRunningAgent = false;
 
   printStatusBar(currentModel, cwd);
   printHelpHints();
@@ -807,8 +808,15 @@ async function cmdChat(opts) {
     process.exit(0);
   });
 
+  rl.on('SIGINT', () => {
+    if (isRunningAgent) return;
+    console.log(`\n  ${FG_YELLOW}Use Ctrl+D or type exit to quit.${RST}`);
+    rl.prompt(true);
+  });
+
   async function prompt() {
-    rl.question(`  ${FG_TEAL}${BOLD}>${RST} `, async (input) => {
+    rl.setPrompt(`  ${FG_TEAL}${BOLD}>${RST} `);
+    rl.question(rl.getPrompt(), async (input) => {
       const text = (input || '').trim();
 
       if (!text) return prompt();
@@ -889,7 +897,9 @@ async function cmdChat(opts) {
       console.log(`  ${FG_DARK}${'─'.repeat(Math.min(cols, 70) - 4)}${RST}`);
 
       rl.pause();
+      isRunningAgent = true;
       messages = await runAgentLoop(messages, currentModel);
+      isRunningAgent = false;
       rl.resume();
 
       console.log(`  ${FG_DARK}${'━'.repeat(Math.min(cols, 70) - 4)}${RST}`);
