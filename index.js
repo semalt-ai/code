@@ -21,7 +21,6 @@ const DEFAULT_CONFIG = {
   api_key: 'any',
   default_model: 'default',
   temperature: 0.7,
-  max_tokens: 4096,
   request_timeout_ms: DEFAULT_API_TIMEOUT_MS,
   stream: true,
   models: [],
@@ -531,9 +530,12 @@ async function chatStream(messages, { model, temperature, maxTokens } = {}) {
     model: model || config.default_model,
     messages,
     temperature: temperature !== undefined ? temperature : config.temperature,
-    max_tokens: maxTokens || config.max_tokens,
     stream: true,
   };
+
+  if (maxTokens !== undefined) {
+    payload.max_tokens = maxTokens;
+  }
 
   const body = JSON.stringify(payload);
   let res;
@@ -633,7 +635,6 @@ async function chatSync(messages, { model } = {}) {
     model: model || config.default_model,
     messages,
     temperature: config.temperature,
-    max_tokens: config.max_tokens,
     stream: false,
   };
 
@@ -1130,7 +1131,7 @@ function cmdInit(opts) {
     api_key:       opts.apiKey       || 'any',
     default_model: opts.defaultModel || 'default',
     temperature:   0.7,
-    max_tokens:    4096,
+    request_timeout_ms: DEFAULT_API_TIMEOUT_MS,
     stream:        true,
     models:        config.models,
   };
