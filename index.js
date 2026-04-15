@@ -105,6 +105,167 @@ function boxLine(text, width) {
   return `  ${FG_DARK}${BOX_V}${RST} ${text}${' '.repeat(pad)}${FG_DARK}${BOX_V}${RST}`;
 }
 
+function dropLastChar(text) {
+  const chars = Array.from(text || '');
+  chars.pop();
+  return chars.join('');
+}
+
+function insertCharAt(text, index, value) {
+  const chars = Array.from(text || '');
+  chars.splice(index, 0, value);
+  return chars.join('');
+}
+
+function removeCharAt(text, index) {
+  const chars = Array.from(text || '');
+  chars.splice(index, 1);
+  return chars.join('');
+}
+
+function isPrintableKey(str, key = {}) {
+  if (!str || key.ctrl || key.meta) return false;
+  if (key.name === 'return' || key.name === 'enter' || key.name === 'tab') return false;
+  if (key.name && ['up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown', 'escape', 'delete', 'backspace'].includes(key.name)) {
+    return false;
+  }
+  return !/[\x00-\x1f\x7f]/.test(str);
+}
+
+function readInteractiveInput(promptText, options = {}) {
+  const {
+    allowed = null,
+    immediate = false,
+    trim = false,
+    allowCursorNavigation = false,
+  } = options;
+
+  return new Promise((resolve) => {
+    if (!process.stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      rl.question(promptText, (answer) => {
+        rl.close();
+        resolve({ type: 'submit', value: trim ? (answer || '').trim() : (answer || '') });
+      });
+      return;
+    }
+
+    const wasRaw = typeof process.stdin.isRaw === 'boolean' ? process.stdin.isRaw : false;
+    let buffer = '';
+    let cursor = 0;
+    let done = false;
+
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const render = () => {
+      readline.cursorTo(process.stdout, 0);
+      readline.clearLine(process.stdout, 0);
+      process.stdout.write(`${promptText}${buffer}`);
+      const promptWidth = stripAnsi(promptText).length;
+      readline.cursorTo(process.stdout, promptWidth + cursor);
+    };
+
+    const finish = (result, addNewline = true) => {
+      if (done) return;
+      done = true;
+      process.stdin.setRawMode(wasRaw);
+      process.stdin.removeListener('keypress', onKeypress);
+      if (addNewline) process.stdout.write('\n');
+      resolve(result);
+    };
+
+    const onKeypress = (str, key = {}) => {
+      if (key.ctrl && key.name === 'c') {
+        if (buffer) {
+          buffer = '';
+          cursor = 0;
+          render();
+          return;
+        }
+        finish({ type: 'sigint' }, false);
+        return;
+      }
+
+      if (key.ctrl && key.name === 'd') {
+        if (!buffer) {
+          finish({ type: 'eof' }, false);
+        }
+        return;
+      }
+
+      if (key.name === 'return' || key.name === 'enter') {
+        finish({ type: 'submit', value: trim ? buffer.trim() : buffer });
+        return;
+      }
+
+      if (key.name === 'backspace' || key.name === 'delete') {
+        if (key.name === 'backspace' && cursor > 0) {
+          buffer = removeCharAt(buffer, cursor - 1);
+          cursor--;
+          render();
+        } else if (key.name === 'delete' && cursor < Array.from(buffer).length) {
+          buffer = removeCharAt(buffer, cursor);
+          render();
+        }
+        return;
+      }
+
+      if (allowCursorNavigation && key.name === 'left') {
+        if (cursor > 0) {
+          cursor--;
+          render();
+        }
+        return;
+      }
+
+      if (allowCursorNavigation && key.name === 'right') {
+        if (cursor < Array.from(buffer).length) {
+          cursor++;
+          render();
+        }
+        return;
+      }
+
+      if (allowCursorNavigation && key.name === 'home') {
+        cursor = 0;
+        render();
+        return;
+      }
+
+      if (allowCursorNavigation && key.name === 'end') {
+        cursor = Array.from(buffer).length;
+        render();
+        return;
+      }
+
+      if (key.name && ['up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown', 'escape', 'tab'].includes(key.name)) {
+        return;
+      }
+
+      if (!isPrintableKey(str, key)) return;
+
+      if (allowed && !allowed.includes(str)) return;
+
+      if (immediate) {
+        buffer = str;
+        cursor = Array.from(buffer).length;
+        render();
+        finish({ type: 'submit', value: str });
+        return;
+      }
+
+      buffer = insertCharAt(buffer, cursor, str);
+      cursor++;
+      render();
+    };
+
+    process.stdin.on('keypress', onKeypress);
+    render();
+  });
+}
+
 // ── Permission system ─────────────────────────────────────────────────────────
 
 let AUTO_APPROVE_SHELL = false;
@@ -117,41 +278,11 @@ function askPermissionLine(actionType) {
 }
 
 function readPermissionChoice() {
-  return new Promise((resolve) => {
-    if (!process.stdin.isTTY) {
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      rl.question(`  ${FG_YELLOW}?${RST} `, (answer) => {
-        rl.close();
-        resolve((answer || '').trim());
-      });
-      return;
-    }
-
-    const wasRaw = typeof process.stdin.isRaw === 'boolean' ? process.stdin.isRaw : false;
-    readline.emitKeypressEvents(process.stdin);
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdout.write(`  ${FG_YELLOW}?${RST} `);
-
-    const onKeypress = (str, key = {}) => {
-      if (key.ctrl && key.name === 'c') {
-        process.stdin.setRawMode(wasRaw);
-        process.stdin.removeListener('keypress', onKeypress);
-        process.stdout.write('^C\n');
-        process.kill(process.pid, 'SIGINT');
-        return;
-      }
-
-      const value = (str || '').trim();
-      if (!value) return;
-
-      process.stdin.setRawMode(wasRaw);
-      process.stdin.removeListener('keypress', onKeypress);
-      process.stdout.write(`${value}\n`);
-      resolve(value);
-    };
-
-    process.stdin.on('keypress', onKeypress);
+  return readInteractiveInput(`  ${FG_YELLOW}?${RST} `, {
+    allowed: ['1', '2', '3'],
+    immediate: true,
+    onEmptyCtrlC: 'signal',
+    trim: true,
   });
 }
 
@@ -173,8 +304,14 @@ function askPermission(actionType, description) {
     console.log(`  ${FG_CYAN}${askPermissionLine(actionType)}${RST}`);
     console.log();
 
-    readPermissionChoice().then((answer) => {
-      const choice = (answer || '').trim().toLowerCase();
+    readPermissionChoice().then((result) => {
+      if (result.type === 'sigint' || result.type === 'eof') {
+        console.log(`  ${FG_RED}✗${RST} ${FG_DARK}Denied${RST}`);
+        resolve(false);
+        return;
+      }
+
+      const choice = (result.value || '').trim().toLowerCase();
       if (choice === '1' || choice === 'y' || choice === 'yes') {
         resolve(true);
       } else if (choice === '2' || choice === 'a' || choice === 'always') {
@@ -912,38 +1049,35 @@ async function cmdChat(opts) {
   let messages = [{ role: 'system', content: getSystemPrompt() }];
   const cols = getCols();
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true,
-  });
+  while (true) {
+    const inputResult = await readInteractiveInput(`  ${FG_TEAL}${BOLD}>${RST} `, {
+      trim: false,
+      allowCursorNavigation: true,
+    });
 
-  rl.on('close', () => {
-    console.log(`\n  ${FG_GRAY}Goodbye!${RST}\n`);
-    process.exit(0);
-  });
+    if (inputResult.type === 'eof') {
+      console.log(`\n  ${FG_GRAY}Goodbye!${RST}\n`);
+      return;
+    }
 
-  rl.on('SIGINT', () => {
-    if (isRunningAgent) return;
-    console.log(`\n  ${FG_YELLOW}Use Ctrl+D or type exit to quit.${RST}`);
-    rl.prompt(true);
-  });
-
-  async function prompt() {
-    rl.setPrompt(`  ${FG_TEAL}${BOLD}>${RST} `);
-    rl.question(rl.getPrompt(), async (input) => {
-      const text = (input || '').trim();
-
-      if (!text) return prompt();
-
-      if (['exit', 'quit', '/exit', '/quit'].includes(text.toLowerCase())) {
-        console.log(`\n  ${FG_GRAY}Goodbye!${RST}\n`);
-        rl.close();
-        return;
+    if (inputResult.type === 'sigint') {
+      if (!isRunningAgent) {
+        console.log(`\n  ${FG_YELLOW}Use Ctrl+D or type exit to quit.${RST}`);
       }
+      continue;
+    }
 
-      if (text === '/help') {
-        console.log(`
+    const text = (inputResult.value || '').trim();
+
+    if (!text) continue;
+
+    if (['exit', 'quit', '/exit', '/quit'].includes(text.toLowerCase())) {
+      console.log(`\n  ${FG_GRAY}Goodbye!${RST}\n`);
+      return;
+    }
+
+    if (text === '/help') {
+      console.log(`
   ${FG_BLUE}${BOLD}Commands:${RST}
   ${FG_CYAN}/file <path>${RST}     ${FG_GRAY}Load file or dir into context${RST}
   ${FG_CYAN}/model${RST}           ${FG_GRAY}Choose saved model profile${RST}
@@ -959,82 +1093,83 @@ async function cmdChat(opts) {
 
   ${FG_DARK}The AI can execute commands — you'll be asked to approve each one.${RST}
 `);
-        return prompt();
-      }
+      continue;
+    }
 
-      if (text.startsWith('/file ')) {
-        const fp = text.slice(6).trim();
-        const ctx = readFileContext([fp]);
-        if (ctx) messages.push({ role: 'user', content: `Here is the file context:\n${ctx}` });
-        return prompt();
-      }
+    if (text.startsWith('/file ')) {
+      const fp = text.slice(6).trim();
+      const ctx = readFileContext([fp]);
+      if (ctx) messages.push({ role: 'user', content: `Here is the file context:\n${ctx}` });
+      continue;
+    }
 
-      if (text === '/model' || text === '/models') {
+    if (text === '/model' || text === '/models') {
+      await new Promise((resolve) => {
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+          terminal: true,
+        });
         chooseSavedModelProfile(rl, currentModel, cwd, (nextModel) => {
           currentModel = nextModel;
-          prompt();
+          rl.close();
+          resolve();
         });
-        return;
-      }
+      });
+      continue;
+    }
 
-      if (text.startsWith('/model ')) {
-        currentModel = text.slice(7).trim();
-        console.log(`  ${FG_GREEN}✓${RST} ${FG_GRAY}Model → ${currentModel}${RST}`);
-        printStatusBar(currentModel, cwd);
-        return prompt();
-      }
+    if (text.startsWith('/model ')) {
+      currentModel = text.slice(7).trim();
+      console.log(`  ${FG_GREEN}✓${RST} ${FG_GRAY}Model → ${currentModel}${RST}`);
+      printStatusBar(currentModel, cwd);
+      continue;
+    }
 
-      if (text === '/clear') {
-        messages = [{ role: 'system', content: getSystemPrompt() }];
-        AUTO_APPROVE_SHELL = false;
-        AUTO_APPROVE_FILE  = false;
-        console.log(`  ${FG_GREEN}✓${RST} ${FG_GRAY}Conversation and approvals cleared${RST}\n`);
-        return prompt();
-      }
+    if (text === '/clear') {
+      messages = [{ role: 'system', content: getSystemPrompt() }];
+      AUTO_APPROVE_SHELL = false;
+      AUTO_APPROVE_FILE  = false;
+      console.log(`  ${FG_GREEN}✓${RST} ${FG_GRAY}Conversation and approvals cleared${RST}\n`);
+      continue;
+    }
 
-      if (text === '/compact' || text === '/cost') {
-        const total = messages.reduce((s, m) => s + estimateTokens(m.content), 0);
-        console.log(`  ${FG_GRAY}${messages.length - 1} messages · ~${total} tokens${RST}\n`);
-        return prompt();
-      }
+    if (text === '/compact' || text === '/cost') {
+      const total = messages.reduce((s, m) => s + estimateTokens(m.content), 0);
+      console.log(`  ${FG_GRAY}${messages.length - 1} messages · ~${total} tokens${RST}\n`);
+      continue;
+    }
 
-      if (text === '/config') {
-        console.log(`  ${FG_GRAY}${JSON.stringify(config, null, 2)}${RST}\n`);
-        return prompt();
-      }
+    if (text === '/config') {
+      console.log(`  ${FG_GRAY}${JSON.stringify(config, null, 2)}${RST}\n`);
+      continue;
+    }
 
-      if (text === '/approve') {
-        AUTO_APPROVE_SHELL = !AUTO_APPROVE_SHELL;
-        AUTO_APPROVE_FILE  = !AUTO_APPROVE_FILE;
-        const state = AUTO_APPROVE_SHELL ? 'ON' : 'OFF';
-        const color = AUTO_APPROVE_SHELL ? FG_GREEN : FG_RED;
-        console.log(`  ${color}●${RST} ${FG_GRAY}Auto-approve: ${state}${RST}\n`);
-        return prompt();
-      }
+    if (text === '/approve') {
+      AUTO_APPROVE_SHELL = !AUTO_APPROVE_SHELL;
+      AUTO_APPROVE_FILE  = !AUTO_APPROVE_FILE;
+      const state = AUTO_APPROVE_SHELL ? 'ON' : 'OFF';
+      const color = AUTO_APPROVE_SHELL ? FG_GREEN : FG_RED;
+      console.log(`  ${color}●${RST} ${FG_GRAY}Auto-approve: ${state}${RST}\n`);
+      continue;
+    }
 
-      if (text.startsWith('/shell ') || text.startsWith('!')) {
-        const cmd = text.startsWith('/shell ') ? text.slice(7).trim() : text.slice(1).trim();
-        await agentExecShell(cmd);
-        return prompt();
-      }
+    if (text.startsWith('/shell ') || text.startsWith('!')) {
+      const cmd = text.startsWith('/shell ') ? text.slice(7).trim() : text.slice(1).trim();
+      await agentExecShell(cmd);
+      continue;
+    }
 
-      messages.push({ role: 'user', content: text });
-      console.log(`  ${FG_DARK}${'─'.repeat(Math.min(cols, 70) - 4)}${RST}`);
+    messages.push({ role: 'user', content: text });
+    console.log(`  ${FG_DARK}${'─'.repeat(Math.min(cols, 70) - 4)}${RST}`);
 
-      rl.pause();
-      isRunningAgent = true;
-      messages = await runAgentLoop(messages, currentModel);
-      isRunningAgent = false;
-      rl.resume();
+    isRunningAgent = true;
+    messages = await runAgentLoop(messages, currentModel);
+    isRunningAgent = false;
 
-      console.log(`  ${FG_DARK}${'━'.repeat(Math.min(cols, 70) - 4)}${RST}`);
-      console.log();
-
-      prompt();
-    });
+    console.log(`  ${FG_DARK}${'━'.repeat(Math.min(cols, 70) - 4)}${RST}`);
+    console.log();
   }
-
-  prompt();
 }
 
 async function cmdCode(opts, promptArgs) {
