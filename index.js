@@ -110,6 +110,51 @@ function boxLine(text, width) {
 let AUTO_APPROVE_SHELL = false;
 let AUTO_APPROVE_FILE  = false;
 
+function askPermissionLine(actionType) {
+  return actionType === 'shell'
+    ? '  1. Yes  2. Yes, always for shell  3. No'
+    : '  1. Yes  2. Yes, always for files  3. No';
+}
+
+function readPermissionChoice() {
+  return new Promise((resolve) => {
+    if (!process.stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      rl.question(`  ${FG_YELLOW}?${RST} `, (answer) => {
+        rl.close();
+        resolve((answer || '').trim());
+      });
+      return;
+    }
+
+    const wasRaw = typeof process.stdin.isRaw === 'boolean' ? process.stdin.isRaw : false;
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdout.write(`  ${FG_YELLOW}?${RST} `);
+
+    const onKeypress = (str, key = {}) => {
+      if (key.ctrl && key.name === 'c') {
+        process.stdin.setRawMode(wasRaw);
+        process.stdin.removeListener('keypress', onKeypress);
+        process.stdout.write('^C\n');
+        process.kill(process.pid, 'SIGINT');
+        return;
+      }
+
+      const value = (str || '').trim();
+      if (!value) return;
+
+      process.stdin.setRawMode(wasRaw);
+      process.stdin.removeListener('keypress', onKeypress);
+      process.stdout.write(`${value}\n`);
+      resolve(value);
+    };
+
+    process.stdin.on('keypress', onKeypress);
+  });
+}
+
 function askPermission(actionType, description) {
   return new Promise((resolve) => {
     if (actionType === 'shell' && AUTO_APPROVE_SHELL) {
@@ -125,16 +170,14 @@ function askPermission(actionType, description) {
     console.log(`  ${FG_YELLOW}${BOLD}⚠ Permission required${RST}`);
     console.log(`  ${FG_GRAY}${actionType}: ${description}${RST}`);
     console.log();
-    console.log(`  ${FG_CYAN}[y]${RST} Yes  ${FG_CYAN}[a]${RST} Yes, always  ${FG_CYAN}[n]${RST} No`);
+    console.log(`  ${FG_CYAN}${askPermissionLine(actionType)}${RST}`);
     console.log();
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`  ${FG_YELLOW}?${RST} `, (answer) => {
-      rl.close();
+    readPermissionChoice().then((answer) => {
       const choice = (answer || '').trim().toLowerCase();
-      if (choice === 'y' || choice === 'yes') {
+      if (choice === '1' || choice === 'y' || choice === 'yes') {
         resolve(true);
-      } else if (choice === 'a' || choice === 'always') {
+      } else if (choice === '2' || choice === 'a' || choice === 'always') {
         if (actionType === 'shell') AUTO_APPROVE_SHELL = true;
         else AUTO_APPROVE_FILE = true;
         console.log(`  ${FG_GREEN}✓${RST} ${FG_DARK}Auto-approve enabled for ${actionType} operations${RST}`);
