@@ -12,6 +12,8 @@ const { URL } = require('url');
 
 const PACKAGE_JSON = require('./package.json');
 
+const DEFAULT_API_TIMEOUT_MS = 15 * 60 * 1000;
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG = {
@@ -20,6 +22,7 @@ const DEFAULT_CONFIG = {
   default_model: 'default',
   temperature: 0.7,
   max_tokens: 4096,
+  request_timeout_ms: DEFAULT_API_TIMEOUT_MS,
   stream: true,
   models: [],
 };
@@ -538,6 +541,7 @@ async function chatStream(messages, { model, temperature, maxTokens } = {}) {
   try {
     res = await httpRequest(apiUrl('/v1/chat/completions'), {
       method: 'POST',
+      timeout: config.request_timeout_ms,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.api_key}`,
@@ -639,6 +643,7 @@ async function chatSync(messages, { model } = {}) {
   try {
     res = await httpRequest(apiUrl('/v1/chat/completions'), {
       method: 'POST',
+      timeout: config.request_timeout_ms,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.api_key}`,

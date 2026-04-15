@@ -67,6 +67,7 @@ Example config:
   "default_model": "default",
   "temperature": 0.7,
   "max_tokens": 4096,
+  "request_timeout_ms": 900000,
   "stream": true
 }
 ```
