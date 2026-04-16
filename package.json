@@ -1,6 +1,6 @@
 {
   "name": "@semalt-ai/code",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Self-hosted AI Coding Assistant CLI",
   "main": "index.js",
   "bin": {
